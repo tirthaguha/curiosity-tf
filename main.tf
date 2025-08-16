@@ -56,6 +56,13 @@ resource "aws_s3_bucket_policy" "site_policy" {
 ######################
 # CloudFront
 ######################
+
+data "aws_acm_certificate" "wildcard_cert" {
+  domain      = "*.tirthaguha.net"
+  statuses    = ["ISSUED"]
+  most_recent = true
+}
+
 resource "aws_cloudfront_distribution" "site_cdn" {
   enabled             = true
   default_root_object = "index.html" # changed
@@ -108,8 +115,36 @@ resource "aws_cloudfront_distribution" "site_cdn" {
     }
   }
 
+  # viewer_certificate {
+  #   cloudfront_default_certificate = true
+  # }
+
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = data.aws_acm_certificate.wildcard_cert.arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
+  }
+
+  aliases = ["curiosity.tirthaguha.net"] # <-- Alternate domain name
+}
+
+######################
+# Route 53 DNS record
+######################
+data "aws_route53_zone" "main" {
+  name         = "tirthaguha.net."
+  private_zone = false
+}
+
+resource "aws_route53_record" "curiosity_alias" {
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = "curiosity.tirthaguha.net"
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.site_cdn.domain_name
+    zone_id                = aws_cloudfront_distribution.site_cdn.hosted_zone_id
+    evaluate_target_health = false
   }
 }
 
